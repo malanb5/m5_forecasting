@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 from datetime import datetime, timedelta
-from src import Shaper
+from YJ import Shaper
 
 # Correct data types for "calendar.csv"
 calendarDTypes = {"event_name_1": "category",
@@ -268,7 +268,7 @@ for icount, (alpha, weight) in enumerate(zip(alphas, weights)):
         tst = te[(te['date'] >= day - timedelta(days=maxLags)) & (te['date'] <= day)].copy()
         create_features(tst)
         tst = tst.loc[tst['date'] == day, trainCols]
-        te.loc[te['date'] == day, "sales"] = alpha * m_lgb.predict(tst)  # magic multiplier by kyakovlev
+        te.loc[te['date'] == day, "sales"] = alpha * m_lgb.naive_predict(tst)  # magic multiplier by kyakovlev
 
     te_sub = te.loc[te['date'] >= fday, ["id", "sales"]].copy()
     te_sub["F"] = [f"F{rank}" for rank in te_sub.groupby("id")["id"].cumcount() + 1]

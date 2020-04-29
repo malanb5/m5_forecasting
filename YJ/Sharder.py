@@ -2,7 +2,7 @@
 Shards files and other eda_objs
 """
 import pickle
-from src.WalRunner import env
+from YJ.WalRunner import env
 
 def shard(l, n):
 		n_l = list()

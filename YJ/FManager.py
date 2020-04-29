@@ -3,8 +3,13 @@ file manager utility functions
 """
 
 import pickle, tqdm
-from src import Shaper, Timer
+from YJ import Shaper, Timer
 
+def load(fp):
+    return pickle.load(open(fp, "rb"))
+
+def save(obj, fp):
+    pickle.dump(obj, open(fp, "wb"))
 
 def _prepare_export_val(sales, id, iteration, start, finish):
     delim_c = ","

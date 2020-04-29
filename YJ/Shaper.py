@@ -3,8 +3,6 @@ Generic data shaping methods
 """
 
 import tqdm, pickle, pandas as pd
-import numpy as np
-from src import Timer
 
 def bin_columns(val_df, cal_df, lr, col_index='wday'):
     """
@@ -104,12 +102,6 @@ def normalize_dict(binned_df_l):
 
     return binned_df_l
 
-def load(fp):
-    return pickle.load(open(fp, "rb"))
-
-def save(obj, fp):
-    pickle.dump(obj, open(fp, "wb"))
-
 def binup(row, bins):
 
     if row not in bins:
@@ -147,3 +139,41 @@ def apply_label_before(df, cat, n_before):
 
     return df
 
+
+@staticmethod
+def generate_unified():
+    cal = pickle.load(open(env.WORKING_DIR + "/eda_objs/0", 'rb'))
+    sales = pickle.load(open(env.WORKING_DIR + "/eda_objs/WI_sales_cat.pkl", 'rb'))
+    prices = pickle.load(open(env.WORKING_DIR + "/eda_objs/2", 'rb'))
+
+    item_set = sales['id'].apply(lambda x: x.replace("_validation", ""))
+    print(item_set)
+    sales.drop(["id", "item_id", 'dept_id', 'cat_id', 'store_id', "state_id"], axis=1, inplace=True)
+    sales = sales.T
+    merged = pd.merge(sales, cal, left_on=sales.index, right_on=cal["d"])
+    merged.drop(['snap_TX', 'snap_CA', 'month', 'year', 'weekday'], axis=1, inplace=True)
+
+    # print(merged.columns)
+    # merged_first = merged.loc[:,
+    # 			   [0, "date", "wm_yr_wk", "wday", "d", "event_name_1", "event_name_2", "event_type_1",
+    # 				"event_type_2", "snap_TX"]]
+
+    item_prices = []
+    for id in tqdm(item_set):
+        counter = 0
+        n_char = 0
+
+        for i in range(len(id)):
+            if id[i] == "_":
+                counter += 1
+            if counter == 3:
+                item_id = id[: (n_char - 2)]
+                store_id = id[(n_char - 1):]
+
+            n_char += 1
+
+        item_prices.append(prices.loc[(prices['store_id'] == store_id) & (prices['item_id'] == item_id)])
+
+    print(len(item_prices))
+
+    pickle.dump(item_prices, open(env.WORKING_DIR + "/eda_objs/item_prices_wi.pkl", "wb"))

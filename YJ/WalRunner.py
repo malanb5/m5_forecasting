@@ -2,14 +2,9 @@ import pandas as pd, numpy as np,math
 from tqdm import tqdm
 import pickle
 import concurrent.futures
-# from fbprophet import Prophet
-import os, argparse
-
-class Environ:
-	def __init__(self):
-		self.WORKING_DIR = ""
-
-env = Environ()
+import YJ.environment as env
+import os, argparse, logging
+import YJ.Shaper as Shaper
 
 class WalRunner:
 
@@ -40,7 +35,7 @@ class WalRunner:
 	@staticmethod
 	def get_sales_pd(pd_l_id, pr_cal):
 		"""
-        gets the most likely outcomes from the probability distribution of a time series of days
+		gets the most likely outcomes from the probability distribution of a time series of days
         :param pd_l: tuple of the list of item's probability distributions and the id
         :param pr_cal: the probability of the calendar days to predict
         :return:
@@ -111,13 +106,13 @@ class WalRunner:
 		return RMSE
 
 	@staticmethod
-	def predict():
+	def naive_predict():
 
 		pd_dow = pickle.load(open('../objs/eda_objs/norm_dow_val.pkl', "rb"))
 
 		cal = pickle.load(open("../objs/eda_objs/0", "rb"))
 
-		cal = WalRunner.dropper(cal, ["date", "wm_yr_wk", "weekday", "month", "year", "event_name_1", "event_name_2",
+		cal = Shaper.dropper(cal, ["date", "wm_yr_wk", "weekday", "month", "year", "event_name_1", "event_name_2",
 								   "event_type_1", "event_type_2", "snap_CA", "snap_TX", "snap_WI"])
 		cal = cal.T
 
@@ -142,54 +137,13 @@ class WalRunner:
 
 		pickle.dump(pred_sales, open('../objs/eda_objs/pred_sales.pkl', "wb"))
 
-		exit(0)
-
 	@staticmethod
-	def generate_unified():
-
-		cal = pickle.load(open(env.WORKING_DIR + "/eda_objs/0", 'rb'))
-		sales = pickle.load(open(env.WORKING_DIR + "/eda_objs/WI_sales_cat.pkl", 'rb'))
-		prices = pickle.load(open(env.WORKING_DIR + "/eda_objs/2", 'rb'))
-
-		item_set = sales['id'].apply(lambda x: x.replace("_validation", ""))
-		print(item_set)
-		sales.drop(["id", "item_id", 'dept_id', 'cat_id', 'store_id', "state_id"], axis=1, inplace=True)
-		sales = sales.T
-		merged = pd.merge(sales, cal, left_on=sales.index, right_on=cal["d"])
-		merged.drop(['snap_TX', 'snap_CA', 'month', 'year', 'weekday'], axis=1, inplace=True)
-
-		# print(merged.columns)
-		# merged_first = merged.loc[:,
-		# 			   [0, "date", "wm_yr_wk", "wday", "d", "event_name_1", "event_name_2", "event_type_1",
-		# 				"event_type_2", "snap_TX"]]
-
-		item_prices = []
-		for id in tqdm(item_set):
-			counter = 0
-			n_char = 0
-
-			for i in range(len(id)):
-				if id[i] == "_":
-					counter += 1
-				if counter == 3:
-					item_id = id[: (n_char -2)]
-					store_id = id[(n_char-1):]
-
-				n_char +=1
-
-			item_prices.append(prices.loc[(prices['store_id'] == store_id) & (prices['item_id'] == item_id)])
-
-		print(len(item_prices))
-
-		pickle.dump(item_prices, open(env.WORKING_DIR + "/eda_objs/item_prices_wi.pkl", "wb"))
-
-	@staticmethod
-	def _prophet_predict(i,df, future):
+	def _prophet_predict(i, df, future, Prophet):
 		m =Prophet()
 		m.add_country_holidays("US")
 		m.fit(df)
 
-		forecast = m.predict(future)
+		forecast = m.naive_predict(future)
 
 		return forecast["yhat"]
 
@@ -202,7 +156,7 @@ class WalRunner:
 		for i in tqdm(range(start_i, fin_i)):
 			df = pob.loc[:, ["ds", i]]
 			df.rename(mapper={i: 'y'}, axis=1, inplace=True)
-			yhat = WalRunner._prophet_predict(i, df, fut_dat)
+			yhat = WalRunner._prophet_predict(i, df, fut_dat, Prophet)
 			s_pred.append(yhat)
 
 		pickle.dump(s_pred, open(env.WORKING_DIR + '/eda_objs/s_predt_prophet_%d_%d.pkl'%(start_i, fin_i), 'wb'))
@@ -211,6 +165,8 @@ class WalRunner:
 
 	@staticmethod
 	def prophet_predict(mt=False):
+		from fbprophet import Prophet
+
 		pob = pickle.load(open(env.WORKING_DIR + '/eda_objs/timeseries_sales.pkl', "rb"))
 		fut_dat = pickle.load(open(env.WORKING_DIR + '/eda_objs/predict_cal', 'rb'))
 
@@ -220,7 +176,7 @@ class WalRunner:
 			for i in tqdm(range(13500, len(pob.columns))):
 				df = pob.loc[:, ["ds", i]]
 				df.rename(mapper={i:'y'}, axis =1, inplace=True)
-				yhat =WalRunner._prophet_predict(i, df, fut_dat)
+				yhat = WalRunner._prophet_predict(i, df, fut_dat, Prophet)
 				s_pred.append(yhat)
 				if i % 100 == 0:
 					pickle.dump(s_pred, open(env.WORKING_DIR + '/eda_objs/s_predt_prophet_holidays_4_20_20_13500_30000.pkl', 'wb'))
@@ -256,7 +212,7 @@ class WalRunner:
 		import pandas as pd
 		import lightgbm as lgb
 		from datetime import datetime, timedelta
-		from src import Shaper
+		import YJ.Shaper as Shaper
 
 		# Correct data types for "calendar.csv"
 		calendarDTypes = {"event_name_1": "category",
@@ -514,7 +470,7 @@ class WalRunner:
 				tst = te[(te['date'] >= day - timedelta(days=maxLags)) & (te['date'] <= day)].copy()
 				create_features(tst)
 				tst = tst.loc[tst['date'] == day, trainCols]
-				te.loc[te['date'] == day, "sales"] = alpha * m_lgb.predict(tst)  # magic multiplier by kyakovlev
+				te.loc[te['date'] == day, "sales"] = alpha * m_lgb.naive_predict(tst)  # magic multiplier by kyakovlev
 
 			te_sub = te.loc[te['date'] >= fday, ["id", "sales"]].copy()
 			te_sub["F"] = [f"F{rank}" for rank in te_sub.groupby("id")["id"].cumcount() + 1]
@@ -537,23 +493,39 @@ class WalRunner:
 		sub.to_csv("submission_lgbm_tree_20_4_20.csv", index=False)
 
 class Main:
+	@staticmethod
+	def init_logger():
+		import YJ.Timer as Timer
+
+		ds = Timer.get_timestamp_str()
+
+		lg = logging.getLogger(name=os.path.basename(__file__)[:-3])
+		lg.setLevel(logging.DEBUG)
+
+		logging.basicConfig(filename=(env.WORKING_DIR + "/logs/%s.log") % ds, filemode="w", format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+		return lg
 
 	@staticmethod
 	def main(dir = None):
-		if dir is None:
-			env.WORKING_DIR = os.getcwd()
-		else:
-			env.WORKING_DIR = dir
+
+		lg = Main.init_logger()
+
+		lg.debug("Hello")
+
+		exit(0)
+
 		parser = argparse.ArgumentParser(description='predict sales data.')
-		parser.add_argument('--prophet', dest='prophet', type=bool)
+		parser.add_argument('--algorithm', dest='algorithm', type=str)
+		args = parser.parse_args()
 
-		print(parser.prophet)
+		if args.algorithm == "prophet":
+			WalRunner.prophet_predict(mt=False)
+		elif args.algorithm == "lgbm":
+			WalRunner.lgbm_predict()
+
 		exit(0)
 
-		WalRunner.prophet_predict(mt=False)
-
-		exit(0)
-
-		# TODO: cut off based on when the product was introduced
+		# TODO: cut off data to just when the product is
 
 Main.main(os.getcwd())

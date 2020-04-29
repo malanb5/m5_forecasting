@@ -3,7 +3,7 @@ from tensorflow import keras
 import numpy as np
 import traceback
 import pandas as pd
-from src import Shaper, Timer
+from YJ import Shaper, Timer
 from sklearn import metrics, model_selection
 
 class NNPredict:
@@ -58,7 +58,7 @@ class NNPredict:
         probability_model = tf.keras.Sequential([model,
                                                  tf.keras.layers.Softmax()])
 
-        predictions = probability_model.predict(test_X)
+        predictions = probability_model.naive_predict(test_X)
 
         scores = NNPredict._convert_to_score_from_pred(predictions)
 
