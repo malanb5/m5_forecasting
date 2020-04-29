@@ -1,9 +1,13 @@
+"""
+implementation of the Light GBM model for this competition
+"""
+
 import gc
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
 from datetime import datetime, timedelta
-import Shaper, pickle
+from src import Shaper
 
 # Correct data types for "calendar.csv"
 calendarDTypes = {"event_name_1": "category",
@@ -20,7 +24,7 @@ calendarDTypes = {"event_name_1": "category",
                   'snap_WI': 'float32'}
 
 # Read csv file
-calendar = pd.read_csv("data/calendar.csv",
+calendar = pd.read_csv("../data/calendar.csv",
                        dtype=calendarDTypes)
 
 calendar = Shaper.apply_label_before(calendar, ['event_name_1', 'event_name_1', 'event_type_1', 'event_type_2'], 7)
@@ -40,7 +44,7 @@ priceDTypes = {"store_id": "category",
                "sell_price": "float32"}
 
 # Read csv file
-prices = pd.read_csv("data/sell_prices.csv",
+prices = pd.read_csv("../data/sell_prices.csv",
                      dtype=priceDTypes)
 
 # Transform categorical features into integers
@@ -65,7 +69,7 @@ dtype = {numCol: "float32" for numCol in numCols}
 dtype.update({catCol: "category" for catCol in catCols if catCol != "id"})
 
 # Read csv file
-ds = pd.read_csv("data/sales_train_validation.csv",
+ds = pd.read_csv("../data/sales_train_validation.csv",
                  usecols=catCols + numCols, dtype=dtype)
 
 # Transform categorical features into integers
@@ -197,7 +201,7 @@ def create_ds():
     dtype = {numCol: "float32" for numCol in numCols}
     dtype.update({catCol: "category" for catCol in catCols if catCol != "id"})
 
-    ds = pd.read_csv("data/sales_train_validation.csv",
+    ds = pd.read_csv("../data/sales_train_validation.csv",
                      usecols=catCols + numCols, dtype=dtype)
 
     for col in catCols:
@@ -281,7 +285,7 @@ for icount, (alpha, weight) in enumerate(zip(alphas, weights)):
     print(icount, alpha, weight)
 
 
-print("creating csv file submission")
+print("creating csv file submissions")
 sub2 = sub.copy()
 sub2["id"] = sub2["id"].str.replace("validation$", "evaluation")
 sub = pd.concat([sub, sub2], axis=0, sort=False)

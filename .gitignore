@@ -1,4 +1,4 @@
-objects
+objs/eda_objs
 data
 *.csv
 *.pkl

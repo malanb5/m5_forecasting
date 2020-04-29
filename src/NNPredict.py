@@ -3,7 +3,7 @@ from tensorflow import keras
 import numpy as np
 import traceback
 import pandas as pd
-import Timer, Shaper, tqdm
+from src import Shaper, Timer
 from sklearn import metrics, model_selection
 
 class NNPredict:
@@ -77,6 +77,7 @@ class NNPredict:
             return np.asarray(df)
         else:
             print("is not dataframe or series")
+
     @staticmethod
     def exec(device_type, y_train, X_train, test_proportion, seed, shuffle, X_test, verbosity, epochs, fan_in=4):
 
@@ -134,7 +135,7 @@ class NNPredict:
         if test_proportion == 0:
             print("scores: %s" %str(scores))
             print("size of scores: %d" %(len(scores)))
-            Shaper.save(scores, "objects/scores_nnpredict_np_array_%s.pkl" % Timer.get_timestamp_str())
+            Shaper.save(scores, "eda_objs/scores_nnpredict_np_array_%s.pkl" % Timer.get_timestamp_str())
 
     @staticmethod
     def make_predictions(device_type):
@@ -152,6 +153,7 @@ class NNPredict:
         print(X_test)
 
         NNPredict.exec(device_type, y_train, X_train, test_size, seed, shuffle, X_test, verbosity, epochs, fan_in =4)
+
 
 devices = [ "GPU"]
 for device in devices:

@@ -1,4 +1,9 @@
-import pickle, tqdm, Shaper, Timer
+"""
+file manager utility functions
+"""
+
+import pickle, tqdm
+from src import Shaper, Timer
 
 
 def _prepare_export_val(sales, id, iteration, start, finish):
@@ -47,9 +52,9 @@ def export():
     date_str = Timer.get_timestamp_str()
     csv_fp_out = "predictions/sales_predictions_%s.csv" %(date_str)
 
-    val = pickle.load(open("objects/1", "rb"))
+    val = pickle.load(open("../objs/eda_objs/1", "rb"))
     ids = val['id']
-    fb_predictions_l = Shaper.load("objects/s_predt_prophet_no_holiday_20_4_19.pkl")
+    fb_predictions_l = Shaper.load("eda_objs/s_predt_prophet_no_holiday_20_4_19.pkl")
 
     _export(fb_predictions_l, ids, csv_fp_out)
 

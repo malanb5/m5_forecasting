@@ -1,7 +1,8 @@
 """
-Shards files and other objects
+Shards files and other eda_objs
 """
 import pickle
+from src.WalRunner import env
 
 def shard(l, n):
 		n_l = list()
@@ -46,4 +47,4 @@ def shard_columns(pob, n):
 
 	for st_end in shard_points:
 		pickle.dump(pob[pob.columns[st_end[0]: st_end[1]]],
-					open(env.WORKING_DIR + '/objects/date_sales_shard_%d_%d.pkl' % (st_end[0], st_end[1]), "wb"))
+					open(env.WORKING_DIR + '/eda_objs/date_sales_shard_%d_%d.pkl' % (st_end[0], st_end[1]), "wb"))
