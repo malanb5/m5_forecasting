@@ -4,3 +4,5 @@ data
 *.pkl
 *.png
 *.log
+*.lgb
+*.hdf5
