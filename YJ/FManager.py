@@ -62,5 +62,3 @@ def export():
     fb_predictions_l = Shaper.load("eda_objs/s_predt_prophet_no_holiday_20_4_19.pkl")
 
     _export(fb_predictions_l, ids, csv_fp_out)
-
-export()

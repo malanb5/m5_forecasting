@@ -9,6 +9,7 @@ import concurrent.futures
 import environment as env
 import os, argparse, logging
 import Shaper as Shaper
+from YJ.FManager import load, save
 
 class WalRunner:
 
@@ -351,6 +352,11 @@ class WalRunner:
 		X_train = ds[trainCols]
 		y_train = ds["sales"]
 
+		save(X_train, "objs/X_train_LGBmodel.pkl")
+		save(y_train, "objs/y_train_LGBmodel.pkl")
+
+		exit(0)
+
 		# define categorical features
 		catFeats = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id'] + \
 				   ["event_name_1", "event_name_2", "event_type_1", "event_type_2"]
@@ -386,13 +392,13 @@ class WalRunner:
 		lg.debug("training lgb model...")
 
 		# Train LightGBM model
-		# m_lgb = lgb.train(params, trainData, valid_sets=[validData], verbose_eval=20)
+		m_lgb = lgb.train(params, trainData, valid_sets=[validData], verbose_eval=20)
 
 		# loading the pre-trained model
-		m_lgb = lgb.Booster(model_file="models/model.lgb")
+		# m_lgb = lgb.Booster(model_file="models/model.lgb")
 
 		# # Save the model
-		# m_lgb.save_model("models/model_events_before.lgb")
+		m_lgb.save_model("models/model_events_before.lgb")
 
 		# PREDICTIONS
 		lg.debug("making predictions...")
