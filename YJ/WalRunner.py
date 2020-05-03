@@ -348,6 +348,65 @@ class WalRunner:
 		for df, obj_fp in zip(check_dfs, objs_fps):
 			save(df, obj_fp)
 
+	# Create dataset for predictions
+	@staticmethod
+	def create_ds():
+		startDay = trLast - maxLags
+
+		numCols = [f"d_{day}" for day in range(startDay, trLast + 1)]
+		catCols = ['id', 'item_id', 'dept_id', 'store_id', 'cat_id', 'state_id']
+
+		dtype = {numCol: "float32" for numCol in numCols}
+		dtype.update({catCol: "category" for catCol in catCols if catCol != "id"})
+
+		ds = pd.read_csv("data/sales_train_validation.csv",
+						 usecols=catCols + numCols, dtype=dtype)
+
+		for col in catCols:
+			if col != "id":
+				ds[col] = ds[col].cat.codes.astype("int16")
+				ds[col] -= ds[col].min()
+
+		for day in range(trLast + 1, trLast + 28 + 1):
+			ds[f"d_{day}"] = np.nan
+
+		ds = pd.melt(ds,
+					 id_vars=catCols,
+					 value_vars=[col for col in ds.columns if col.startswith("d_")],
+					 var_name="d",
+					 value_name="sales")
+
+		ds = ds.merge(calendar, on="d", copy=False)
+		ds = ds.merge(prices, on=["store_id", "item_id", "wm_yr_wk"], copy=False)
+
+		return ds
+
+	@staticmethod
+	def create_features(ds):
+		dayLags = [7, 28]
+		lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
+		for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+			ds[lagSalesCol] = ds[["id", "sales"]].groupby("id")["sales"].shift(dayLag)
+
+		windows = [7, 28]
+		for window in windows:
+			for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+				ds[f"rmean_{dayLag}_{window}"] = ds[["id", lagSalesCol]].groupby("id")[lagSalesCol].transform(
+					lambda x: x.rolling(window).mean())
+
+		dateFeatures = {"wday": "weekday",
+						"week": "weekofyear",
+						"month": "month",
+						"quarter": "quarter",
+						"year": "year",
+						"mday": "day"}
+
+		for featName, featFunc in dateFeatures.items():
+			if featName in ds.columns:
+				ds[featName] = ds[featName].astype("int16")
+			else:
+				ds[featName] = getattr(ds["date"].dt, featFunc).astype("int16")
+
 	@staticmethod
 	def lgbm_predict(lg):
 
@@ -420,62 +479,6 @@ class WalRunner:
 		# Maximum lag day
 		maxLags = 57
 
-		# Create dataset for predictions
-		def create_ds():
-			startDay = trLast - maxLags
-
-			numCols = [f"d_{day}" for day in range(startDay, trLast + 1)]
-			catCols = ['id', 'item_id', 'dept_id', 'store_id', 'cat_id', 'state_id']
-
-			dtype = {numCol: "float32" for numCol in numCols}
-			dtype.update({catCol: "category" for catCol in catCols if catCol != "id"})
-
-			ds = pd.read_csv("data/sales_train_validation.csv",
-							 usecols=catCols + numCols, dtype=dtype)
-
-			for col in catCols:
-				if col != "id":
-					ds[col] = ds[col].cat.codes.astype("int16")
-					ds[col] -= ds[col].min()
-
-			for day in range(trLast + 1, trLast + 28 + 1):
-				ds[f"d_{day}"] = np.nan
-
-			ds = pd.melt(ds,
-						 id_vars=catCols,
-						 value_vars=[col for col in ds.columns if col.startswith("d_")],
-						 var_name="d",
-						 value_name="sales")
-
-			ds = ds.merge(calendar, on="d", copy=False)
-			ds = ds.merge(prices, on=["store_id", "item_id", "wm_yr_wk"], copy=False)
-
-			return ds
-
-		def create_features(ds):
-			dayLags = [7, 28]
-			lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
-			for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
-				ds[lagSalesCol] = ds[["id", "sales"]].groupby("id")["sales"].shift(dayLag)
-
-			windows = [7, 28]
-			for window in windows:
-				for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
-					ds[f"rmean_{dayLag}_{window}"] = ds[["id", lagSalesCol]].groupby("id")[lagSalesCol].transform(
-						lambda x: x.rolling(window).mean())
-
-			dateFeatures = {"wday": "weekday",
-							"week": "weekofyear",
-							"month": "month",
-							"quarter": "quarter",
-							"year": "year",
-							"mday": "day"}
-
-			for featName, featFunc in dateFeatures.items():
-				if featName in ds.columns:
-					ds[featName] = ds[featName].astype("int16")
-				else:
-					ds[featName] = getattr(ds["date"].dt, featFunc).astype("int16")
 
 		fday = datetime(2016, 4, 25)
 		alphas = [1.028, 1.023, 1.018]
@@ -483,14 +486,14 @@ class WalRunner:
 		sub = 0.
 
 		for icount, (alpha, weight) in enumerate(zip(alphas, weights)):
-			te = create_ds()
+			te = WalRunner.create_ds()
 			cols = [f"F{i}" for i in range(1, 29)]
 
 			for tdelta in range(0, 28):
 				day = fday + timedelta(days=tdelta)
 				lg.debug("%s, %s"%(tdelta, day))
 				tst = te[(te['date'] >= day - timedelta(days=maxLags)) & (te['date'] <= day)].copy()
-				create_features(tst)
+				WalRunner.create_features(tst)
 				tst = tst.loc[tst['date'] == day, trainCols]
 				te.loc[te['date'] == day, "sales"] = alpha * m_lgb.predict(tst)  # magic multiplier by kyakovlev
 
