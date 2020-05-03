@@ -369,9 +369,6 @@ class WalRunner:
 
 		X_train, y_train, trainCols, calendar, prices = dfs
 
-
-		# exit(0)
-
 		# define categorical features
 		catFeats = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id'] + \
 				   ["event_name_1", "event_name_2", "event_type_1", "event_type_2"]
