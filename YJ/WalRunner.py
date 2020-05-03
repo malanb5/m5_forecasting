@@ -10,6 +10,8 @@ import environment as env
 import os, argparse, logging
 import Shaper as Shaper
 from YJ.FManager import load, save
+from datetime import datetime, timedelta
+import YJ.Shaper as Shaper
 
 class WalRunner:
 
@@ -350,7 +352,7 @@ class WalRunner:
 
 	# Create dataset for predictions
 	@staticmethod
-	def create_ds():
+	def create_ds(trLast, maxLags, calendar, prices):
 		startDay = trLast - maxLags
 
 		numCols = [f"d_{day}" for day in range(startDay, trLast + 1)]
@@ -383,6 +385,7 @@ class WalRunner:
 
 	@staticmethod
 	def create_features(ds):
+
 		dayLags = [7, 28]
 		lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
 		for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
@@ -408,43 +411,64 @@ class WalRunner:
 				ds[featName] = getattr(ds["date"].dt, featFunc).astype("int16")
 
 	@staticmethod
-	def lgbm_predict(lg):
-
-		# LOADING
-		import gc
+	def lgbm_get_model(lg, X_train, y_train,  params, catFeats, model_fp, isTrained= False):
 		import lightgbm as lgb
-		from datetime import datetime, timedelta
-		import YJ.Shaper as Shaper
+		import gc
 
-		np.random.seed(777)
+		if not isTrained:
+			# define categorical features
+			validInds = np.random.choice(X_train.index.values, 2_000_000, replace=False)
+			trainInds = np.setdiff1d(X_train.index.values, validInds)
 
-		objs_fps = ["objs/X_train_LGBmodel.pkl", "objs/y_train_LGBmodel.pkl", "objs/trainCols_LGBmodel.pkl",
-					"objs/calendarCols_LGBmodel.pkl", "objs/priceCols_LGBmodel.pkl"]
+			trainData = lgb.Dataset(X_train.loc[trainInds], label=y_train.loc[trainInds],
+									categorical_feature=catFeats, free_raw_data=False)
+			validData = lgb.Dataset(X_train.loc[validInds], label=y_train.loc[validInds],
+									categorical_feature=catFeats, free_raw_data=False)
+
+			lg.debug("cleaning up necessarily data structures...")
+			del X_train, y_train, validInds, trainInds
+			gc.collect()
 
 
+
+			lg.debug("training lgb model...")
+
+			# Train LightGBM model
+			m_lgb = lgb.train(params, trainData, valid_sets=[validData], verbose_eval=20)
+
+			# # Save the model
+			m_lgb.save_model(model_fp)
+
+		else:
+			# loading the pre-trained model
+			m_lgb = lgb.Booster(model_file=model_fp)
+
+		return m_lgb
+
+	@staticmethod
+	def load_objs(objs_fps):
 		dfs = []
+
 		for obj_fp in objs_fps:
 			dfs.append(load(obj_fp))
 
-		X_train, y_train, trainCols, calendar, prices = dfs
+		return dfs
 
-		# define categorical features
+
+	@staticmethod
+	def lgbm_predict(lg):
+
+		np.random.seed(777)
+
+		# LOADING
+		objs_fps = ["objs/X_train_LGBmodel.pkl", "objs/y_train_LGBmodel.pkl", "objs/trainCols_LGBmodel.pkl",
+					"objs/calendarCols_LGBmodel.pkl", "objs/priceCols_LGBmodel.pkl"]
+
 		catFeats = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id'] + \
 				   ["event_name_1", "event_name_2", "event_type_1", "event_type_2"]
 
-		validInds = np.random.choice(X_train.index.values, 2_000_000, replace=False)
-		trainInds = np.setdiff1d(X_train.index.values, validInds)
-
-		trainData = lgb.Dataset(X_train.loc[trainInds], label=y_train.loc[trainInds],
-								categorical_feature=catFeats, free_raw_data=False)
-		validData = lgb.Dataset(X_train.loc[validInds], label=y_train.loc[validInds],
-								categorical_feature=catFeats, free_raw_data=False)
-
-		lg.debug("cleaning up necessarily data structures...")
-		del X_train, y_train, validInds, trainInds
-		gc.collect()
-
-		# Model
+		model_fp = "models/model_events_before.lgb"
+		# model parameters
 		params = {
 			"objective": "poisson",
 			"metric": "rmse",
@@ -460,16 +484,9 @@ class WalRunner:
 			"min_data_in_leaf": 100,
 		}
 
-		lg.debug("training lgb model...")
+		X_train, y_train, trainCols, calendar, prices  = WalRunner.load_objs(objs_fps)
 
-		# Train LightGBM model
-		m_lgb = lgb.train(params, trainData, valid_sets=[validData], verbose_eval=20)
-
-		# loading the pre-trained model
-		# m_lgb = lgb.Booster(model_file="models/model.lgb")
-
-		# # Save the model
-		m_lgb.save_model("models/model_events_before.lgb")
+		m_lgb = WalRunner.lgbm_get_model(lg, X_train, y_train, model_fp =model_fp, params=params, catFeats=catFeats, isTrained=True)
 
 		# PREDICTIONS
 		lg.debug("making predictions...")
@@ -486,7 +503,7 @@ class WalRunner:
 		sub = 0.
 
 		for icount, (alpha, weight) in enumerate(zip(alphas, weights)):
-			te = WalRunner.create_ds()
+			te = WalRunner.create_ds(trLast, maxLags, calendar, prices)
 			cols = [f"F{i}" for i in range(1, 29)]
 
 			for tdelta in range(0, 28):
