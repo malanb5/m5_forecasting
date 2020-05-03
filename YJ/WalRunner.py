@@ -210,21 +210,10 @@ class WalRunner:
 			pickle.dump(pred_sales, open(env.WORKING_DIR + '/eda_objs/prophet_pred_sales_mt_18294_24392.pkl', "wb"))
 
 			print("--- %s seconds ---" % (time.time() - start_time))
-			exit(0)\
+			exit(0)
 
 	@staticmethod
-	def lgbm_predict(lg):
-
-		# LOADING
-		import gc
-		import numpy as np
-		import pandas as pd
-		import lightgbm as lgb
-		from datetime import datetime, timedelta
-		import Shaper as Shaper
-
-		np.random.seed(777)
-
+	def lgbm_preprocess():
 
 		# the calendar data types
 		calendarDTypes = {"event_name_1": "category",
@@ -351,11 +340,37 @@ class WalRunner:
 
 		X_train = ds[trainCols]
 		y_train = ds["sales"]
+		del ds
+		objs_fps = ["objs/X_train_LGBmodel.pkl", "objs/y_train_LGBmodel.pkl", "objs/trainCols_LGBmodel.pkl",
+					"objs/calendarCols_LGBmodel.pkl", "objs/priceCols_LGBmodel.pkl"]
+		check_dfs = [X_train, y_train, trainCols, calendar, prices]
 
-		save(X_train, "objs/X_train_LGBmodel.pkl")
-		save(y_train, "objs/y_train_LGBmodel.pkl")
+		for df, obj_fp in zip(check_dfs, objs_fps):
+			save(df, obj_fp)
 
-		exit(0)
+	@staticmethod
+	def lgbm_predict(lg):
+
+		# LOADING
+		import gc
+		import lightgbm as lgb
+		from datetime import datetime, timedelta
+		import YJ.Shaper as Shaper
+
+		np.random.seed(777)
+
+		objs_fps = ["objs/X_train_LGBmodel.pkl", "objs/y_train_LGBmodel.pkl", "objs/trainCols_LGBmodel.pkl",
+					"objs/calendarCols_LGBmodel.pkl", "objs/priceCols_LGBmodel.pkl"]
+
+
+		dfs = []
+		for obj_fp in objs_fps:
+			dfs.append(load(obj_fp))
+
+		X_train, y_train, trainCols, calendar, prices = dfs
+
+
+		# exit(0)
 
 		# define categorical features
 		catFeats = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id'] + \
@@ -370,7 +385,7 @@ class WalRunner:
 								categorical_feature=catFeats, free_raw_data=False)
 
 		lg.debug("cleaning up necessarily data structures...")
-		del ds, X_train, y_train, validInds, trainInds;
+		del X_train, y_train, validInds, trainInds
 		gc.collect()
 
 		# Model
@@ -505,7 +520,7 @@ class WalRunner:
 class Main:
 	@staticmethod
 	def init_logger(level):
-		import Timer as Timer
+		import YJ.Timer as Timer
 		import sys
 
 		ds = Timer.get_timestamp_str()
