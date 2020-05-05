@@ -39,6 +39,8 @@ WEIGHTS = [1 / len(ALPHAS)] * len(ALPHAS)
 
 sub = 0.
 
+NN_MODEL_FP = 'models/wal_nn_2020-05-05_03-35.hdf5'
+
 # model parameters
 LGBM_PARAMS = {
     "objective": "poisson",

@@ -2,7 +2,7 @@
 Shards files and other eda_objs
 """
 import pickle
-from YJ.WalRunner import env
+from .environment import WORKING_DIR
 
 def shard(l, n):
 		n_l = list()
@@ -25,8 +25,6 @@ def shard(l, n):
 
 		return n_l
 
-
-
 def find_shard_points(tot_l, n):
 
 	shard_size = int(tot_l / n)
@@ -47,4 +45,4 @@ def shard_columns(pob, n):
 
 	for st_end in shard_points:
 		pickle.dump(pob[pob.columns[st_end[0]: st_end[1]]],
-					open(env.WORKING_DIR + '/eda_objs/date_sales_shard_%d_%d.pkl' % (st_end[0], st_end[1]), "wb"))
+					open(WORKING_DIR + '/eda_objs/date_sales_shard_%d_%d.pkl' % (st_end[0], st_end[1]), "wb"))

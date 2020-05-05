@@ -2,7 +2,72 @@
 Generic data shaping methods
 """
 
-import tqdm, pickle, pandas as pd
+import tqdm, pickle, pandas as pd, numpy as np
+
+def bottom_out_col(df, col_name):
+    df[col_name] = df[col_name] - df[col_name].min()
+    return df
+
+def get_max(df, col_name):
+    return df[col_name].max() + 1
+
+# Create dataset for predictions
+def create_ds(trLast, maxLags, calendar, prices):
+    startDay = trLast - maxLags
+
+    numCols = [f"d_{day}" for day in range(startDay, trLast + 1)]
+    catCols = ['id', 'item_id', 'dept_id', 'store_id', 'cat_id', 'state_id']
+
+    dtype = {numCol: "float32" for numCol in numCols}
+    dtype.update({catCol: "category" for catCol in catCols if catCol != "id"})
+
+    ds = pd.read_csv("data/sales_train_validation.csv",
+                     usecols=catCols + numCols, dtype=dtype)
+
+    for col in catCols:
+        if col != "id":
+            ds[col] = ds[col].cat.codes.astype("int16")
+            ds[col] -= ds[col].min()
+
+    for day in range(trLast + 1, trLast + 28 + 1):
+        ds[f"d_{day}"] = np.nan
+
+    ds = pd.melt(ds,
+                 id_vars=catCols,
+                 value_vars=[col for col in ds.columns if col.startswith("d_")],
+                 var_name="d",
+                 value_name="sales")
+
+    ds = ds.merge(calendar, on="d", copy=False)
+    ds = ds.merge(prices, on=["store_id", "item_id", "wm_yr_wk"], copy=False)
+
+    return ds
+
+def create_features(ds):
+    dayLags = [7, 28]
+    lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
+    for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+        ds[lagSalesCol] = ds[["id", "sales"]].groupby("id")["sales"].shift(dayLag)
+
+    windows = [7, 28]
+    for window in windows:
+        for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+            ds[f"rmean_{dayLag}_{window}"] = ds[["id", lagSalesCol]].groupby("id")[lagSalesCol].transform(
+                lambda x: x.rolling(window).mean())
+
+    dateFeatures = {"wday": "weekday",
+                    "week": "weekofyear",
+                    "month": "month",
+                    "quarter": "quarter",
+                    "year": "year",
+                    "mday": "day"}
+
+    for featName, featFunc in dateFeatures.items():
+        if featName in ds.columns:
+            ds[featName] = ds[featName].astype("int16")
+        else:
+            ds[featName] = getattr(ds["date"].dt, featFunc).astype("int16")
+
 
 def bin_columns(val_df, cal_df, lr, col_index='wday'):
     """
@@ -138,7 +203,6 @@ def apply_label_before(df, cat, n_before):
                 wk_bf = df.loc[i-n_before -1 : i, cat]
 
     return df
-
 
 def one_hot_encode_column():
     """
