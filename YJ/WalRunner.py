@@ -513,7 +513,7 @@ class Main:
 		ds = Timer.get_timestamp_str()
 
 		# https://stackoverflow.com/questions/13733552/logger-configuration-to-log-to-file-and-print-to-stdout
-		logPath = "logs"
+		logPath = WORKING_DIR + "/logs"
 		fileName = "%s"%ds
 
 
