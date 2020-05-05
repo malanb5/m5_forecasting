@@ -20,6 +20,7 @@ from keras.layers import Embedding, Add, Input, concatenate, SpatialDropout1D
 from keras.layers import Flatten, Dropout, Dense, BatchNormalization, Concatenate
 from tqdm.keras import TqdmCallback
 import tensorflow as tf
+from YJ.Timer import get_timestamp_str
 
 class WalRunner:
 
@@ -543,7 +544,7 @@ class WalRunner:
 
 	@staticmethod
 	def nn_train(lg):
-		model_fp = 'models/dl_support.h5'
+		model_fp = 'models/wal_nn_%s.hdf5'% get_timestamp_str()
 		ds = load("objs/X_train.pkl")
 		y = load("objs/y_train.pkl")
 
@@ -559,7 +560,7 @@ class WalRunner:
 		n_embed_out = 64
 		dense_n = 1000
 		batch_size = 20000
-		epochs = 2
+		epochs = 5
 		lr_init, lr_fin = 0.001, 0.0001
 		exp_decay = lambda init, fin, steps: (init / fin) ** (1 / (steps - 1)) - 1
 		steps = int(len(ds) / batch_size) * epochs
@@ -601,7 +602,7 @@ class WalRunner:
 		model.fit(X, y, batch_size=batch_size, epochs=2, shuffle=True, verbose=0, callbacks=[TqdmCallback(verbose=2)])
 		del ds, y, X
 		gc.collect()
-		model.save_weights(model_fp)
+		model.save(model_fp)
 
 	@staticmethod
 	def nn_run(lg):
