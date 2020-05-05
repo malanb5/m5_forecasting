@@ -140,11 +140,31 @@ def apply_label_before(df, cat, n_before):
     return df
 
 
-@staticmethod
+def one_hot_encode_column():
+    """
+
+    :return:
+    """
+    from YJ.FManager import load
+    import numpy as np
+    from sklearn.preprocessing import OneHotEncoder
+
+    ds = load("objs/sales_train_validation.pkl")
+
+    item_cat_id = np.expand_dims(np.asarray(ds['item_id']), axis=1)
+
+    enc = OneHotEncoder(handle_unknown='ignore', dtype=int, sparse=False)
+    enc.fit(item_cat_id)
+    print(enc.categories_)
+
+    item_cat_id = enc.transform([item_cat_id[0]])
+    print(item_cat_id)
+
 def generate_unified():
-    cal = pickle.load(open(env.WORKING_DIR + "/eda_objs/0", 'rb'))
-    sales = pickle.load(open(env.WORKING_DIR + "/eda_objs/WI_sales_cat.pkl", 'rb'))
-    prices = pickle.load(open(env.WORKING_DIR + "/eda_objs/2", 'rb'))
+    from YJ.environment import WORKING_DIR
+    cal = pickle.load(open(WORKING_DIR + "/eda_objs/0", 'rb'))
+    sales = pickle.load(open(WORKING_DIR + "/eda_objs/WI_sales_cat.pkl", 'rb'))
+    prices = pickle.load(open(WORKING_DIR + "/eda_objs/2", 'rb'))
 
     item_set = sales['id'].apply(lambda x: x.replace("_validation", ""))
     print(item_set)
@@ -176,4 +196,4 @@ def generate_unified():
 
     print(len(item_prices))
 
-    pickle.dump(item_prices, open(env.WORKING_DIR + "/eda_objs/item_prices_wi.pkl", "wb"))
+    pickle.dump(item_prices, open(WORKING_DIR + "/eda_objs/item_prices_wi.pkl", "wb"))

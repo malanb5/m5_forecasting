@@ -11,6 +11,13 @@ import argparse, logging
 from YJ.FManager import load, save
 from datetime import timedelta
 import YJ.Shaper as Shaper
+from sklearn.preprocessing import OneHotEncoder
+from keras.models import Sequential, Model
+from keras.optimizers import Adam
+import gc
+from keras.layers import Embedding, Add, Input, concatenate, SpatialDropout1D
+from keras.layers import Flatten, Dropout, Dense, BatchNormalization, Concatenate
+from tqdm.keras import TqdmCallback
 
 class WalRunner:
 
@@ -502,6 +509,102 @@ class WalRunner:
 
 		WalRunner.lgbm_predict(lg, prices, calendar, trainCols, m_lgb)
 
+	@staticmethod
+	def get_max(df, col_name):
+		return df[col_name].max()+ 1
+
+	@staticmethod
+	def make_embedded_layer(shape, name, max_val, embed_n):
+		input = Input(shape=shape, name=name)
+		embed = Embedding(max_val, embed_n)(input)
+
+		return input, embed
+
+	@staticmethod
+	def make_dense_input_layer(shape, name, n_d_layers, act_type):
+		input = Input(shape=shape, name=name)
+		d_l = Dense(n_d_layers, activation=act_type)(input)
+		d_l = BatchNormalization()(d_l)
+
+		return input, d_l
+
+	@staticmethod
+	def make_keras_input(df, cols, X = None):
+		if X is None:
+			X = {}
+			for each_col in cols:
+				X[each_col] = df[each_col]
+		else:
+			for each_col in cols:
+				X[each_col] = df[each_col]
+		return X
+
+
+	@staticmethod
+	def nn_run(lg):
+		model_fp = 'models/dl_support.h5'
+		ds = load("objs/X_train.pkl")
+		y = load("objs/y_train.pkl")
+
+		cat_cols = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id', 'wday',
+					'month', 'year', 'event_name_1', 'event_name_2', 'event_type_1',
+					'event_type_2', 'week', 'quarter', 'mday']
+		cont_cols = ['sell_price', 'lag_7', 'lag_28', 'rmean_7_7', 'rmean_28_7',
+					 'rmean_7_28', 'rmean_28_28']
+
+		input_layers = []
+		hid_layers = []
+		n_embed_out = 64
+		dense_n = 1000
+		batch_size = 20000
+		epochs = 2
+		lr_init, lr_fin = 0.001, 0.0001
+		exp_decay = lambda init, fin, steps: (init / fin) ** (1 / (steps - 1)) - 1
+		steps = int(len(ds) / batch_size) * epochs
+		lr_decay = exp_decay(lr_init, lr_fin, steps)
+
+
+		for cat_col in cat_cols:
+			max_cat = WalRunner.get_max(ds, cat_col)
+			in_layer, embed_layer = WalRunner.make_embedded_layer([1], cat_col, max_cat, n_embed_out)
+			input_layers.append(in_layer)
+			hid_layers.append(embed_layer)
+
+		fe = concatenate(hid_layers)
+		s_dout = SpatialDropout1D(0.2)(fe)
+		x = Flatten()(s_dout)
+
+		con_layers = []
+
+		for con_col in cont_cols:
+			in_layer, embed_layer = WalRunner.make_dense_input_layer([1], con_col,  n_embed_out, 'relu')
+			input_layers.append(in_layer)
+			con_layers.append(embed_layer)
+
+		con_fe = concatenate(con_layers)
+
+		x = concatenate([x, con_fe])
+		x = Dropout(0.2)(Dense(dense_n, activation='relu')(x))
+		x = Dropout(0.2)(Dense(dense_n, activation='relu')(x))
+		outp = Dense(1, activation='sigmoid')(x)
+
+		optimizer_adam = Adam(lr=0.001, decay=lr_decay)
+
+		model = Model(inputs=input_layers, outputs=outp, name="wal_net")
+		model.compile(loss='binary_crossentropy', optimizer=optimizer_adam, metrics=['accuracy'])
+		model.summary()
+
+		X = WalRunner.make_keras_input(ds, cat_cols)
+		X = WalRunner.make_keras_input(ds, cont_cols, X)
+
+		model.fit(X, y, batch_size=batch_size, epochs=2, shuffle=True, verbose=0, callbacks=[TqdmCallback(verbose=2)])
+		del ds, y, X
+		gc.collect()
+		model.save_weights(model_fp)
+
+		exit(0)
+
+
 
 class Main:
 	@staticmethod
@@ -543,6 +646,10 @@ class Main:
 			WalRunner.prophet_predict(mt=False, lg=lg)
 		elif args.algorithm == "lgbm":
 			WalRunner.lgbm_run(lg=lg)
+
+
+		elif args.algorithm == "nn":
+			WalRunner.nn_run(lg=lg)
 		else:
 			raise Exception("please specify an algorithm to run eg. --algorithm lgbm")
 
