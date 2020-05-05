@@ -21,8 +21,9 @@ from keras.layers import Embedding, Add, Input, concatenate, SpatialDropout1D
 from keras.layers import Flatten, Dropout, Dense, BatchNormalization, Concatenate
 from tqdm.keras import TqdmCallback
 import tensorflow as tf
-
 from YJ.Timer import get_timestamp_str
+from YJ.ProphetRunner import *
+
 
 class WalRunner:
 
@@ -155,75 +156,7 @@ class WalRunner:
 
 		pickle.dump(pred_sales, open('../objs/eda_objs/pred_sales.pkl', "wb"))
 
-	@staticmethod
-	def _prophet_predict(i, df, future, Prophet):
-		m =Prophet()
-		m.add_country_holidays("US")
-		m.fit(df)
 
-		forecast = m.predict(future)
-
-		return forecast["yhat"]
-
-	@staticmethod
-	def _prophet_mt_predict(i, pob, start_i, fin_i, fut_dat):
-		s_pred = list()
-		start_i = 6098
-		fin_i = 12196
-
-		for i in tqdm(range(start_i, fin_i)):
-			df = pob.loc[:, ["ds", i]]
-			df.rename(mapper={i: 'y'}, axis=1, inplace=True)
-			yhat = WalRunner._prophet_predict(i, df, fut_dat, Prophet)
-			s_pred.append(yhat)
-
-		pickle.dump(s_pred, open(WORKING_DIR + '/eda_objs/s_predt_prophet_%d_%d.pkl'%(start_i, fin_i), 'wb'))
-
-		return i, s_pred
-
-	@staticmethod
-	def prophet_predict(mt=False, lg=None):
-		from fbprophet import Prophet
-
-		eda_obs_fp = '/objs/eda_objs/'
-
-		pob = pickle.load(open(WORKING_DIR + eda_obs_fp + 'timeseries_sales.pkl', "rb"))
-		fut_dat = pickle.load(open(WORKING_DIR + eda_obs_fp + 'predict_cal', 'rb'))
-
-		if not mt:
-			s_pred=list()
-
-			for i in tqdm(range(13500, len(pob.columns))):
-				df = pob.loc[:, ["ds", i]]
-				df.rename(mapper={i:'y'}, axis =1, inplace=True)
-				yhat = WalRunner._prophet_predict(i, df, fut_dat, Prophet)
-				s_pred.append(yhat)
-				if i % 100 == 0:
-					pickle.dump(s_pred, open(WORKING_DIR + eda_obs_fp + 's_predt_prophet_holidays_4_20_20_13500_30000.pkl', 'wb'))
-
-			pickle.dump(s_pred, open(WORKING_DIR + eda_obs_fp +'s_predt_prophet_holidays_4_20_20_13500_30000.pkl', 'wb'))
-
-		elif(mt):
-			import time
-			start_time = time.time()
-			n = 1
-			pred_sales = [None] * (n +1)
-
-			tot_data_points = len(pob.columns) - 1
-			shard_points = WalRunner.find_shard_points(tot_data_points, n)
-
-			with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
-				future_sales = {executor.submit(WalRunner._prophet_mt_predict, i, pob, start_fin_tup[0], start_fin_tup[1], fut_dat):
-									(i, start_fin_tup[0], start_fin_tup[1]) for i, start_fin_tup  in enumerate(shard_points)}
-
-				for f in concurrent.futures.as_completed(future_sales):
-					id, res = f.result()
-					pred_sales[id] = res
-
-			pickle.dump(pred_sales, open(WORKING_DIR + '/eda_objs/prophet_pred_sales_mt_18294_24392.pkl', "wb"))
-
-			print("--- %s seconds ---" % (time.time() - start_time))
-			exit(0)
 
 	@staticmethod
 	def lgbm_preprocess():
@@ -463,7 +396,6 @@ class WalRunner:
 
 		return dfs
 
-
 	@staticmethod
 	def lgbm_predict(lg, prices, calendar, trainCols, m_lgb):
 		# PREDICTIONS
@@ -560,9 +492,9 @@ class WalRunner:
 		input_layers = []
 		hid_layers = []
 
-		n_embed_out = 500
-		dense_n = 2000
-		batch_size = 10000
+		n_embed_out = 750
+		dense_n = 3000
+		batch_size = 1000
 		epochs = 5
 		lr_init, lr_fin = 10e-5, 10e-6
 
@@ -571,6 +503,8 @@ class WalRunner:
 		lr_decay = exp_decay(lr_init, lr_fin, steps)
 
 		for cat_col in cat_cols:
+			#TODO: subtract minimum from column
+			ds[cat_col]=ds[cat_col]-ds[cat_col].min()
 			max_cat = WalRunner.get_max(ds, cat_col)
 			in_layer, embed_layer = WalRunner.make_embedded_layer([1], cat_col, max_cat, n_embed_out)
 			input_layers.append(in_layer)
@@ -591,8 +525,11 @@ class WalRunner:
 
 		x = concatenate([x, con_fe])
 		x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
+		x = Dropout(0.1)(Dense(dense_n,activation='relu')(x))
+		x = Dropout(0.1)(Dense(dense_n,activation='relu')(x))
 		x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
-		outp = Dense(1, activation='relu')(x)
+		x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
+		outp = Dense(1, kernel_initializer='normal',activation='linear')(x)
 
 		optimizer_adam = Adam(lr=lr_fin, decay=lr_decay)
 
@@ -608,13 +545,19 @@ class WalRunner:
 		es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=50)
 
 		model.fit(X, y, batch_size=batch_size, use_multiprocessing=True,
-				  validation_split=.1, epochs=2, shuffle=True, verbose=0,
+				  validation_split=.1, epochs=epochs, shuffle=True, verbose=0,
 				  callbacks=[TqdmCallback(verbose=2),checkpoint, es])
 
 		model.save(model_fp)
 
-		loss = model.evaluate(x=X, y=y, batch_size=batch_size, verbosity=1, use_multiprocessing=True)
+
+		loss = model.evaluate(x=X, y=y, batch_size=batch_size, use_multiprocessing=True)
 		lg.debug("loss is: %f"%loss)
+
+		predictions = model.predict(x=X, batch_size=batch_size, use_multiprocessing=True)
+		for i, prediction in enumerate(predictions):
+			lg.debug("iteration: %d, prediction: %s" %(i, prediction))
+
 
 	@staticmethod
 	def nn_run(lg):
@@ -673,7 +616,7 @@ class Main:
 		args = parser.parse_args()
 
 		if args.algorithm == "prophet":
-			WalRunner.prophet_predict(mt=False, lg=lg)
+			prophet_predict(mt=False, lg=lg)
 		elif args.algorithm == "lgbm":
 			WalRunner.lgbm_run(lg=lg)
 
