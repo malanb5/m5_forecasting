@@ -1,6 +1,7 @@
 """
 Main runner class of the Walmart sales forecaster
 """
+import traceback
 
 import pandas as pd, numpy as np,math
 from tqdm import tqdm
@@ -18,6 +19,7 @@ import gc
 from keras.layers import Embedding, Add, Input, concatenate, SpatialDropout1D
 from keras.layers import Flatten, Dropout, Dense, BatchNormalization, Concatenate
 from tqdm.keras import TqdmCallback
+import tensorflow as tf
 
 class WalRunner:
 
@@ -539,9 +541,8 @@ class WalRunner:
 				X[each_col] = df[each_col]
 		return X
 
-
 	@staticmethod
-	def nn_run(lg):
+	def nn_train(lg):
 		model_fp = 'models/dl_support.h5'
 		ds = load("objs/X_train.pkl")
 		y = load("objs/y_train.pkl")
@@ -551,6 +552,7 @@ class WalRunner:
 					'event_type_2', 'week', 'quarter', 'mday']
 		cont_cols = ['sell_price', 'lag_7', 'lag_28', 'rmean_7_7', 'rmean_28_7',
 					 'rmean_7_28', 'rmean_28_28']
+
 
 		input_layers = []
 		hid_layers = []
@@ -562,7 +564,6 @@ class WalRunner:
 		exp_decay = lambda init, fin, steps: (init / fin) ** (1 / (steps - 1)) - 1
 		steps = int(len(ds) / batch_size) * epochs
 		lr_decay = exp_decay(lr_init, lr_fin, steps)
-
 
 		for cat_col in cat_cols:
 			max_cat = WalRunner.get_max(ds, cat_col)
@@ -577,7 +578,7 @@ class WalRunner:
 		con_layers = []
 
 		for con_col in cont_cols:
-			in_layer, embed_layer = WalRunner.make_dense_input_layer([1], con_col,  n_embed_out, 'relu')
+			in_layer, embed_layer = WalRunner.make_dense_input_layer([1], con_col, n_embed_out, 'relu')
 			input_layers.append(in_layer)
 			con_layers.append(embed_layer)
 
@@ -602,9 +603,25 @@ class WalRunner:
 		gc.collect()
 		model.save_weights(model_fp)
 
-		exit(0)
+	@staticmethod
+	def nn_run(lg):
+		device_type = "GPU"
 
+		tf.config.set_soft_device_placement(True)
+		tf.debugging.set_log_device_placement(True)
 
+		gpus = tf.config.experimental.list_physical_devices('GPU')
+		cpus = tf.config.experimental.list_physical_devices('CPU')
+
+		if gpus and device_type == "GPU":
+			for gpu in gpus:
+				try:
+					with tf.device(gpu.name.replace('physical_device:', '')):
+						WalRunner.nn_train(lg)
+				except RuntimeError as e:
+					print(e)
+					traceback.print_tb(e)
+					traceback.print_stack(e)
 
 class Main:
 	@staticmethod
