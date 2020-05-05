@@ -14,12 +14,14 @@ from datetime import timedelta
 import YJ.Shaper as Shaper
 from sklearn.preprocessing import OneHotEncoder
 from keras.models import Sequential, Model
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.optimizers import Adam
 import gc
 from keras.layers import Embedding, Add, Input, concatenate, SpatialDropout1D
 from keras.layers import Flatten, Dropout, Dense, BatchNormalization, Concatenate
 from tqdm.keras import TqdmCallback
 import tensorflow as tf
+
 from YJ.Timer import get_timestamp_str
 
 class WalRunner:
@@ -557,11 +559,13 @@ class WalRunner:
 
 		input_layers = []
 		hid_layers = []
-		n_embed_out = 64
-		dense_n = 1000
+
+		n_embed_out = 500
+		dense_n = 2000
 		batch_size = 20000
 		epochs = 5
-		lr_init, lr_fin = 0.001, 0.0001
+		lr_init, lr_fin = 10e-5, 10e-6
+
 		exp_decay = lambda init, fin, steps: (init / fin) ** (1 / (steps - 1)) - 1
 		steps = int(len(ds) / batch_size) * epochs
 		lr_decay = exp_decay(lr_init, lr_fin, steps)
@@ -573,7 +577,7 @@ class WalRunner:
 			hid_layers.append(embed_layer)
 
 		fe = concatenate(hid_layers)
-		s_dout = SpatialDropout1D(0.2)(fe)
+		s_dout = SpatialDropout1D(0.1)(fe)
 		x = Flatten()(s_dout)
 
 		con_layers = []
@@ -586,11 +590,11 @@ class WalRunner:
 		con_fe = concatenate(con_layers)
 
 		x = concatenate([x, con_fe])
-		x = Dropout(0.2)(Dense(dense_n, activation='relu')(x))
-		x = Dropout(0.2)(Dense(dense_n, activation='relu')(x))
-		outp = Dense(1, activation='sigmoid')(x)
+		x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
+		x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
+		outp = Dense(1, activation='relu')(x)
 
-		optimizer_adam = Adam(lr=0.001, decay=lr_decay)
+		optimizer_adam = Adam(lr=lr_fin, decay=lr_decay)
 
 		model = Model(inputs=input_layers, outputs=outp, name="wal_net")
 		model.compile(loss='binary_crossentropy', optimizer=optimizer_adam, metrics=['accuracy'])
@@ -599,7 +603,12 @@ class WalRunner:
 		X = WalRunner.make_keras_input(ds, cat_cols)
 		X = WalRunner.make_keras_input(ds, cont_cols, X)
 
-		model.fit(X, y, batch_size=batch_size, epochs=2, shuffle=True, verbose=0, callbacks=[TqdmCallback(verbose=2)])
+		checkpoint_name = 'models/weights-{epoch:03d}.hdf5'
+		checkpoint = ModelCheckpoint(checkpoint_name, monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+		es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=50)
+
+		model.fit(X, y, batch_size=batch_size, use_multiprocessing=True, validation_split=.1, epochs=2, shuffle=True, verbose=0, callbacks=[TqdmCallback(verbose=2),
+																							 checkpoint, es])
 		del ds, y, X
 		gc.collect()
 		model.save(model_fp)
