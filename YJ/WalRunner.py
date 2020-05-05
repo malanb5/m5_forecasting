@@ -562,7 +562,7 @@ class WalRunner:
 
 		n_embed_out = 500
 		dense_n = 2000
-		batch_size = 20000
+		batch_size = 10000
 		epochs = 5
 		lr_init, lr_fin = 10e-5, 10e-6
 
@@ -607,11 +607,14 @@ class WalRunner:
 		checkpoint = ModelCheckpoint(checkpoint_name, monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
 		es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=50)
 
-		model.fit(X, y, batch_size=batch_size, use_multiprocessing=True, validation_split=.1, epochs=2, shuffle=True, verbose=0, callbacks=[TqdmCallback(verbose=2),
-																							 checkpoint, es])
-		del ds, y, X
-		gc.collect()
+		model.fit(X, y, batch_size=batch_size, use_multiprocessing=True,
+				  validation_split=.1, epochs=2, shuffle=True, verbose=0,
+				  callbacks=[TqdmCallback(verbose=2),checkpoint, es])
+
 		model.save(model_fp)
+
+		loss = model.evaluate(x=X, y=y, batch_size=batch_size, verbosity=1, use_multiprocessing=True)
+		lg.debug("loss is: %f"%loss)
 
 	@staticmethod
 	def nn_run(lg):
