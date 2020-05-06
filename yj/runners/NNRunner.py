@@ -108,86 +108,6 @@ class NNRunner(BaseRunnerImpl):
                   callbacks=[TqdmCallback(verbose=2) ,checkpoint, es])
 
         model.save(model_fp)
-    # def _predict(self, prices, calendar, trainCols, model):
-    #     from yj.environment import ALPHAS, WEIGHTS, TR_LAST, MAX_LAGS, FDAY, SUBMISSION_FP
-    #     cat_cols = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id', 'wday',
-    #                 'month', 'year', 'event_name_1', 'event_name_2', 'event_type_1',
-    #                 'event_type_2', 'week', 'quarter', 'mday']
-    #     cont_cols = ['sell_price', 'lag_7', 'lag_28', 'rmean_7_7', 'rmean_28_7',
-    #                  'rmean_7_28', 'rmean_28_28']
-    #
-    #     # PREDICTIONS
-    #     self.lg.debug("making predictions...")
-    #
-    #     for icount, (alpha, weight) in enumerate(zip(ALPHAS, WEIGHTS)):
-    #         te = Shaper.create_ds(TR_LAST, MAX_LAGS, calendar, prices)
-    #         cols = [f"F{i}" for i in range(1, 29)]
-    #
-    #         for tdelta in range(0, 28):
-    #             day = FDAY + timedelta(days=tdelta)
-    #             self.lg.debug("%s, %s" % (tdelta, day))
-    #             tst = te[(te['date'] >= day - timedelta(days=MAX_LAGS)) & (te['date'] <= day)].copy()
-    #             Shaper.create_features(tst)
-    #             tst = tst.loc[tst['date'] == day, trainCols]
-    #             print(tst.columns)
-    #
-    #             tst = self._make_keras_input(tst, cat_cols)
-    #             tst = self._make_keras_input(tst, cont_cols, tst)
-    #
-    #             te.loc[te['date'] == day, "sales"] = alpha * model.predict(tst)  # magic multiplier by kyakovlev
-    #
-    #         te_sub = te.loc[te['date'] >= FDAY, ["id", "sales"]].copy()
-    #         te_sub["F"] = [f"F{rank}" for rank in te_sub.groupby("id")["id"].cumcount() + 1]
-    #         te_sub = te_sub.set_index(["id", "F"]).unstack()["sales"][cols].reset_index()
-    #         te_sub.fillna(0., inplace=True)
-    #         te_sub.sort_values("id", inplace=True)
-    #         te_sub.reset_index(drop=True, inplace=True)
-    #         te_sub.to_csv(f"submission_{icount}.csv", index=False)
-    #
-    #         if icount == 0:
-    #             sub = te_sub
-    #             sub[cols] *= weight
-    #         else:
-    #             sub[cols] += te_sub[cols] * weight
-    #
-    #         self.lg.debug(icount, alpha, weight)
-    #
-    #     self.lg.debug("creating csv file submissions")
-    #     sub2 = sub.copy()
-    #     sub2["id"] = sub2["id"].str.replace("validation", "evaluation")
-    #     sub = pd.concat([sub, sub2], axis=0, sort=False)
-    #     sub.to_csv(SUBMISSION_FP, index=False)
-
-    # def predict(self):
-    #     from yj.environment import NN_MODEL_FP
-    #
-    #     ds = FManager.load("objs/X_train.pkl")
-    #     y = FManager.load("objs/y_train.pkl")
-    #
-    #     cat_cols = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id', 'wday',
-    #                 'month', 'year', 'event_name_1', 'event_name_2', 'event_type_1',
-    #                 'event_type_2', 'week', 'quarter', 'mday']
-    #     cont_cols = ['sell_price', 'lag_7', 'lag_28', 'rmean_7_7', 'rmean_28_7',
-    #                  'rmean_7_28', 'rmean_28_28']
-    #
-    #     batch_size = 1000
-    #
-    #     for cat_col in cat_cols:
-    #         ds = Shaper.bottom_out_col(ds, cat_col)
-    #
-    #     X = self._make_keras_input(ds, cat_cols)
-    #     X = self._make_keras_input(ds, cont_cols, X)
-    #
-    #     model = tf.keras.models.load_model(NN_MODEL_FP)
-    #     model.summary()
-    #
-    #     loss = model.evaluate(x=X, y=y, batch_size=batch_size, use_multiprocessing=True)
-    #     self.lg.debug("loss is: %f" % loss)
-    #     self.lg.debug("making predictions...")
-    #     predictions = model.predict(x=X, batch_size=batch_size, verbose=1, use_multiprocessing=True)
-    #
-    #     for i, prediction in enumerate(predictions):
-    #         self.lg.debug("iteration: %d, prediction: %s" % (i, prediction))
 
     def predict(self):
         from yj.environment import ALPHAS, WEIGHTS, TR_LAST, MAX_LAGS, FDAY, SUBMISSION_FP, PRICE_CAL_TRAIN_DF_FP,\
@@ -227,7 +147,7 @@ class NNRunner(BaseRunnerImpl):
             te_sub.fillna(0., inplace=True)
             te_sub.sort_values("id", inplace=True)
             te_sub.reset_index(drop=True, inplace=True)
-            te_sub.to_csv(f"submission_{icount}.csv", index=False)
+            te_sub.to_csv(f"submissions/submission_{icount}.csv", index=False)
 
             if icount == 0:
                 sub = te_sub
@@ -235,7 +155,7 @@ class NNRunner(BaseRunnerImpl):
             else:
                 sub[cols] += te_sub[cols] * weight
 
-            self.lg.debug(icount, alpha, weight)
+            self.lg.debug("iteration: %d, alpha: %f, weight: %f" %icount, alpha, weight)
 
         self.lg.debug("creating csv file submissions")
         sub2 = sub.copy()

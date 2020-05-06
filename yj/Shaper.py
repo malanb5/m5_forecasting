@@ -73,6 +73,15 @@ def create_features(lg, ds):
         else:
             ds[featName] = getattr(ds["date"].dt, featFunc).astype("int16")
 
+        ds[featName] -= ds[featName].min()
+
+    cat_cols = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id', 'wday',
+                'month', 'year', 'event_name_1', 'event_name_2', 'event_type_1',
+                'event_type_2', 'week', 'quarter', 'mday']
+
+    for cat in cat_cols:
+        ds[cat] -= ds[cat].min()
+
     return ds
 
 def bin_columns(val_df, cal_df, lr, col_index='wday'):
