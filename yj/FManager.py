@@ -3,7 +3,8 @@ file manager utility functions
 """
 
 import pickle, tqdm
-from YJ import Shaper, Timer
+from yj import Shaper, Timer
+import pandas as pd
 
 def load(fp):
     return pickle.load(open(fp, "rb"))
@@ -69,5 +70,18 @@ def load_objs(objs_fps):
 
     for obj_fp in objs_fps:
         dfs.append(load(obj_fp))
+
+    return dfs
+
+def _extract(csv_d_u_tup):
+    dfs = []
+    for csv_f, dtype, usecol in csv_d_u_tup:
+        if usecol is not None:
+            df = pd.read_csv(csv_f, dtype=dtype, usecols=usecol)
+        else:
+            df = pd.read_csv(csv_f, dtype=dtype)
+
+        Shaper.make_cat_dtype(df, dtype, "int16")
+        dfs.append(df)
 
     return dfs

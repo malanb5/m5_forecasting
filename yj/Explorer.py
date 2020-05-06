@@ -4,7 +4,7 @@ methods specifically for this project
 """
 
 import sklearn.metrics
-from YJ import Shaper, FManager
+from yj import Shaper, FManager
 import pandas as pd, pickle, numpy as np
 
 def compare_fb_nn():

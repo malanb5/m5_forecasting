@@ -1,6 +1,6 @@
 import pickle, numpy as np, concurrent, tqdm, math
-from YJ.Shaper import dropper, bin_columns
-from YJ import Sharder
+from yj.Shaper import dropper, bin_columns
+from yj import Sharder
 
 def pick_sales(pd_days, weekdays, r):
     sales = list()
@@ -13,8 +13,8 @@ def pick_sales(pd_days, weekdays, r):
     return sales
 
 def make_dow_pd():
-    cal = pickle.load(open("../objs/eda_objs/0", "rb"))
-    val = pickle.load(open("../objs/eda_objs/1", "rb"))
+    cal = pickle.load(open("../../objs/eda_objs/0", "rb"))
+    val = pickle.load(open("../../objs/eda_objs/1", "rb"))
     ids = val['id']
 
     val = dropper(val, ["id", "item_id", "dept_id", "cat_id", "store_id", "state_id"])
@@ -28,9 +28,9 @@ def make_dow_pd():
     ori_cal = cal[:1914]
 
     bins = bin_columns(val, ori_cal, lr=.995)
-    pickle.dump(bins, open("../objs/eda_objs/binned_dow_val.pkl", "wb"))
+    pickle.dump(bins, open("../../objs/eda_objs/binned_dow_val.pkl", "wb"))
 
-    bins = pickle.load(open("../objs/eda_objs/binned_dow_val.pkl", "rb"))
+    bins = pickle.load(open("../../objs/eda_objs/binned_dow_val.pkl", "rb"))
 
 def get_sales_pd(pd_l_id, pr_cal):
     """
@@ -93,9 +93,9 @@ def compare_sales(act_sales, predict_sales):
 
 def naive_predict():
 
-    pd_dow = pickle.load(open('../objs/eda_objs/norm_dow_val.pkl', "rb"))
+    pd_dow = pickle.load(open('../../objs/eda_objs/norm_dow_val.pkl', "rb"))
 
-    cal = pickle.load(open("../objs/eda_objs/0", "rb"))
+    cal = pickle.load(open("../../objs/eda_objs/0", "rb"))
 
     cal = dropper(cal, ["date", "wm_yr_wk", "weekday", "month", "year", "event_name_1", "event_name_2",
                                "event_type_1", "event_type_2", "snap_CA", "snap_TX", "snap_WI"])
@@ -120,4 +120,4 @@ def naive_predict():
 
     print("--- %s seconds ---" % (time.time() - start_time))
 
-    pickle.dump(pred_sales, open('../objs/eda_objs/pred_sales.pkl', "wb"))
+    pickle.dump(pred_sales, open('../../objs/eda_objs/pred_sales.pkl', "wb"))

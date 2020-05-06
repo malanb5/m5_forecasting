@@ -2,7 +2,8 @@
 Generic data shaping methods
 """
 
-import tqdm, pickle, pandas as pd, numpy as np
+from tqdm import tqdm
+import pickle, pandas as pd, numpy as np
 
 def bottom_out_col(df, col_name):
     df[col_name] = df[col_name] - df[col_name].min()
@@ -43,31 +44,36 @@ def create_ds(trLast, maxLags, calendar, prices):
 
     return ds
 
-def create_features(ds):
+def create_features(lg, ds):
     dayLags = [7, 28]
     lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
-    for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+
+    for dayLag, lagSalesCol in tqdm(zip(dayLags, lagSalesCols)):
         ds[lagSalesCol] = ds[["id", "sales"]].groupby("id")["sales"].shift(dayLag)
+    lg.debug(ds)
 
     windows = [7, 28]
-    for window in windows:
-        for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+    for window in tqdm(windows):
+        for dayLag, lagSalesCol in tqdm(zip(dayLags, lagSalesCols)):
             ds[f"rmean_{dayLag}_{window}"] = ds[["id", lagSalesCol]].groupby("id")[lagSalesCol].transform(
                 lambda x: x.rolling(window).mean())
 
-    dateFeatures = {"wday": "weekday",
-                    "week": "weekofyear",
-                    "month": "month",
-                    "quarter": "quarter",
-                    "year": "year",
-                    "mday": "day"}
+    dateFeatures = {
+        "wday": "weekday",
+        "week": "weekofyear",
+        "month": "month",
+        "quarter": "quarter",
+        "year": "year",
+        "mday": "day"
+    }
 
-    for featName, featFunc in dateFeatures.items():
+    for featName, featFunc in tqdm(dateFeatures.items()):
         if featName in ds.columns:
             ds[featName] = ds[featName].astype("int16")
         else:
             ds[featName] = getattr(ds["date"].dt, featFunc).astype("int16")
 
+    return ds
 
 def bin_columns(val_df, cal_df, lr, col_index='wday'):
     """
@@ -209,7 +215,7 @@ def one_hot_encode_column():
 
     :return:
     """
-    from YJ.FManager import load
+    from yj.FManager import load
     import numpy as np
     from sklearn.preprocessing import OneHotEncoder
 
@@ -225,7 +231,7 @@ def one_hot_encode_column():
     print(item_cat_id)
 
 def generate_unified():
-    from YJ.environment import WORKING_DIR
+    from yj.environment import WORKING_DIR
     cal = pickle.load(open(WORKING_DIR + "/eda_objs/0", 'rb'))
     sales = pickle.load(open(WORKING_DIR + "/eda_objs/WI_sales_cat.pkl", 'rb'))
     prices = pickle.load(open(WORKING_DIR + "/eda_objs/2", 'rb'))
@@ -261,3 +267,92 @@ def generate_unified():
     print(len(item_prices))
 
     pickle.dump(item_prices, open(WORKING_DIR + "/eda_objs/item_prices_wi.pkl", "wb"))
+
+def make_cat_dtype(df, schema_dtypes, dtype):
+    # transform categorical features into integers
+    for col, colDType in schema_dtypes.items():
+        if colDType == "category":
+            df[col] = df[col].cat.codes.astype(dtype=dtype)
+            df[col] -= df[col].min()
+
+def create_test():
+    from yj.environment import TR_LAST, MAX_LAGS, DATA_FOLDER, CALENDAR_CSV_F, SALES_TRAIN_VAL, SELL_PRICE_CSV, CAL_DTYPES,\
+        PRICE_DTYPE, SALES_DTYPE, CAT_COLS, NUM_COLS, DATE_FEATURES
+    from yj import FManager, Shaper
+
+    startDay = TR_LAST - MAX_LAGS
+
+    numCols = [f"d_{day}" for day in range(startDay, TR_LAST + 1)]
+
+    dtype = {numCol: "float32" for numCol in numCols}
+    catCols = ['id', 'item_id', 'dept_id', 'store_id', 'cat_id', 'state_id']
+    dtype.update({catCol: "category" for catCol in catCols if catCol != "id"})
+
+    csv_files = [DATA_FOLDER + "/" + CALENDAR_CSV_F, DATA_FOLDER + "/" + SELL_PRICE_CSV,
+                 DATA_FOLDER + "/" + SALES_TRAIN_VAL]
+    dtypes = [CAL_DTYPES, PRICE_DTYPE, SALES_DTYPE]
+
+    usecols = [None, None, CAT_COLS + NUM_COLS]
+
+    csv_dtype_use_tup = zip(csv_files, dtypes, usecols)
+
+    # shadows events to their lead up
+    # calendar = Shaper.apply_label_before(calendar, ['event_name_1', 'event_name_1', 'event_type_1', 'event_type_2'],
+    #                                      14)
+
+    # transform categorical features into integers
+    cal_df, prices, sales_df = FManager._extract(csv_dtype_use_tup)
+
+    for day in range(TR_LAST + 1, TR_LAST + 28 + 1):
+        sales_df[f"d_{day}"] = np.nan
+
+    cal_df["date"] = pd.to_datetime(cal_df["date"])
+
+
+    # melt the categorical data with the label being sales data
+    sales_df = pd.melt(sales_df,
+                       id_vars=CAT_COLS,
+                       value_vars=[col for col in sales_df.columns if col.startswith("d_")],
+                       var_name="d",
+                       value_name="sales")
+
+
+    # Merge "ds" with "calendar" and "prices" dataframe
+    sales_df = sales_df.merge(cal_df, on="d", copy=False)
+    sales_df = sales_df.merge(prices, on=["store_id", "item_id", "wm_yr_wk"], copy=False)
+
+    for featName, featFunc in DATE_FEATURES.items():
+        if featName in sales_df.columns:
+            sales_df[featName] = sales_df[featName].astype("int16")
+        else:
+            sales_df[featName] = getattr(sales_df["date"].dt, featFunc).astype("int16")
+
+    # creating the features for 7 and 28 day moving average sales
+    dayLags = [7, 28]
+    lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
+
+    for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+        sales_df[lagSalesCol] = sales_df[["id", "sales"]].groupby("id")["sales"].shift(dayLag)
+
+    windows = [7, 28]
+    for window in windows:
+        for dayLag, lagSalesCol in zip(dayLags, lagSalesCols):
+            sales_df[f"rmean_{dayLag}_{window}"] = sales_df[["id", lagSalesCol]].groupby("id")[
+                lagSalesCol].transform(
+                lambda x: x.rolling(window).mean())
+
+    # remove all rows with NaN value
+    sales_df.dropna(inplace=True)
+
+    cat_cols = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id',
+                'month', 'year', 'event_name_1', 'event_name_2', 'event_type_1',
+                'event_type_2', 'week', 'quarter', 'mday']
+
+    for cat_col in cat_cols:
+        sales_df = Shaper.bottom_out_col(sales_df, cat_col)
+
+    # define columns that need to be removed
+    unusedCols = ["d", "weekday"]
+    trainCols = sales_df.columns[~sales_df.columns.isin(unusedCols)]
+
+    FManager.save(sales_df[trainCols], "objs/X_test.pkl")

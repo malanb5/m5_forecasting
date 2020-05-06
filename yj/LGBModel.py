@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 from datetime import datetime, timedelta
-from YJ import Shaper
+from yj import Shaper
 
 # Correct data types for "calendar.csv"
 calendarDTypes = {"event_name_1": "category",

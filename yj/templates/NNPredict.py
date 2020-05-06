@@ -3,7 +3,7 @@ from tensorflow import keras
 import numpy as np
 import traceback
 import pandas as pd
-from YJ import Shaper, Timer
+from yj import Shaper, Timer
 from sklearn import metrics, model_selection
 
 class NNPredict:

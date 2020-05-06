@@ -1,8 +1,8 @@
-from YJ.environment import WORKING_DIR
+from yj.environment import WORKING_DIR
 import logging
 
 def init(level):
-    import YJ.Timer as Timer
+    import yj.Timer as Timer
     import sys
 
     ds = Timer.get_timestamp_str()

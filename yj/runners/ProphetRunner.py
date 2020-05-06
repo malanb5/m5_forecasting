@@ -1,14 +1,15 @@
 from fbprophet import Prophet
 import pickle
-import tqdm
-from YJ.environment import *
-from YJ.Sharder import find_shard_points
-import concurrent
+from tqdm import tqdm
+from yj.environment import *
+from yj.Sharder import find_shard_points
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 __all__=["prophet_predict"]
 
-def _prophet_predict(i, df, future, Prophet):
+def _prophet_predict(df, future, Prophet):
     m =Prophet()
+
     m.add_country_holidays("US")
     m.fit(df)
 
@@ -18,7 +19,7 @@ def _prophet_predict(i, df, future, Prophet):
 
 
 
-def _prophet_mt_predict(i, pob, start_i, fin_i, fut_dat):
+def _prophet_mt_predict(i, pob, fut_dat):
     s_pred = list()
     start_i = 6098
     fin_i = 12196
@@ -65,12 +66,12 @@ def prophet_predict(mt=False, lg=None):
         tot_data_points = len(pob.columns) - 1
         shard_points = find_shard_points(tot_data_points, n)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
+        with ThreadPoolExecutor(max_workers=n) as executor:
             future_sales = {
                 executor.submit(_prophet_mt_predict, i, pob, start_fin_tup[0], start_fin_tup[1], fut_dat):
                     (i, start_fin_tup[0], start_fin_tup[1]) for i, start_fin_tup in enumerate(shard_points)}
 
-            for f in concurrent.futures.as_completed(future_sales):
+            for f in as_completed(future_sales):
                 id, res = f.result()
                 pred_sales[id] = res
 
