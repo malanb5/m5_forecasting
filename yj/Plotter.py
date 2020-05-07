@@ -20,3 +20,24 @@ class Plotter:
 		plt.legend(labels)
 		plt.savefig("figures/%s"%(fig_name))
 		plt.show()
+
+	@staticmethod
+	def plot_history(plot_dict):
+		# list all data in history
+		print(plot_dict.history.keys())
+		# summarize history for accuracy
+		plt.plot(plot_dict.history['accuracy'])
+		plt.plot(plot_dict.history['val_accuracy'])
+		plt.title('model accuracy')
+		plt.ylabel('accuracy')
+		plt.xlabel('epoch')
+		plt.legend(['train', 'test'], loc='upper left')
+		plt.show()
+		# summarize history for loss
+		plt.plot(plot_dict.history['loss'])
+		plt.plot(plot_dict.history['val_loss'])
+		plt.title('model loss')
+		plt.ylabel('loss')
+		plt.xlabel('epoch')
+		plt.legend(['train', 'test'], loc='upper left')
+		plt.show()

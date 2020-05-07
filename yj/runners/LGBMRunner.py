@@ -21,7 +21,7 @@ class LGBMRunner(BaseRunnerImpl.BaseRunnerImpl):
                 day = FDAY + timedelta(days=tdelta)
                 self.lg.debug("%s, %s" % (tdelta, day))
                 tst = te[(te['date'] >= day - timedelta(days=MAX_LAGS)) & (te['date'] <= day)].copy()
-                Shaper.create_features(tst)
+                Shaper.create_features()
                 tst = tst.loc[tst['date'] == day, trainCols]
                 te.loc[te['date'] == day, "sales"] = alpha * model.predict(tst)  # magic multiplier by kyakovlev
 

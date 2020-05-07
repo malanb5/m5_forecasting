@@ -6,11 +6,12 @@ from keras.layers import Flatten, Dropout, Dense, BatchNormalization, Concatenat
 from tqdm.keras import TqdmCallback
 import tensorflow as tf
 import traceback
-from yj import Timer, FManager, Shaper
+from yj import Timer, FManager, Shaper, Plotter
 from yj.runners.BaseRunnerImpl import BaseRunnerImpl
 from datetime import timedelta
 import pandas as pd, numpy as np
 from keras.models import load_model
+from keras.wrappers.scikit_learn import KerasRegressor
 
 class NNRunner(BaseRunnerImpl):
 
@@ -46,16 +47,16 @@ class NNRunner(BaseRunnerImpl):
         cat_cols = ['item_id', 'dept_id', 'store_id', 'cat_id', 'state_id', 'wday',
                     'month', 'year', 'event_name_1', 'event_name_2', 'event_type_1',
                     'event_type_2', 'week', 'quarter', 'mday']
+
         cont_cols = ['sell_price', 'lag_7', 'lag_28', 'rmean_7_7', 'rmean_28_7',
                      'rmean_7_28', 'rmean_28_28']
-
 
         input_layers = []
         hid_layers = []
 
         n_embed_out = 750
-        dense_n = 3000
-        batch_size = 1000
+        dense_n = 250
+        batch_size = 2000
         epochs = 5
         lr_init, lr_fin = 10e-5, 10e-6
 
@@ -70,8 +71,7 @@ class NNRunner(BaseRunnerImpl):
             hid_layers.append(embed_layer)
 
         fe = concatenate(hid_layers)
-        s_dout = SpatialDropout1D(0.1)(fe)
-        x = Flatten()(s_dout)
+        x = Flatten()(fe)
 
         con_layers = []
 
@@ -83,17 +83,16 @@ class NNRunner(BaseRunnerImpl):
         con_fe = concatenate(con_layers)
 
         x = concatenate([x, con_fe])
-        x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
-        x = Dropout(0.1)(Dense(dense_n ,activation='relu')(x))
-        x = Dropout(0.1)(Dense(dense_n ,activation='relu')(x))
-        x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
-        x = Dropout(0.1)(Dense(dense_n, activation='relu')(x))
-        outp = Dense(1, kernel_initializer='normal' ,activation='linear')(x)
+        x = Dropout(0.1)(Dense(dense_n,kernel_initializer='random_normal', activation='relu')(x))
+        x = Dropout(0.1)(Dense(dense_n,kernel_initializer='random_normal', activation='relu')(x))
+        x = Dropout(0.1)(Dense(dense_n,kernel_initializer='random_normal', activation='relu')(x))
+        x = Dropout(0.1)(Dense(dense_n,kernel_initializer='random_normal', activation='relu')(x))
+        outp = Dense(1,kernel_initializer='random_normal')(x)
 
         optimizer_adam = Adam(lr=lr_fin, decay=lr_decay)
 
         model = Model(inputs=input_layers, outputs=outp, name="wal_net")
-        model.compile(loss='binary_crossentropy', optimizer=optimizer_adam, metrics=['accuracy'])
+        model.compile(loss='mean_squared_error', optimizer=optimizer_adam, metrics=['mean_squared_error', 'accuracy'])
         model.summary()
 
         X = self._make_keras_input(ds, cat_cols)
@@ -103,9 +102,11 @@ class NNRunner(BaseRunnerImpl):
         checkpoint = ModelCheckpoint(checkpoint_name, monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
         es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=50)
 
-        model.fit(X, y, batch_size=batch_size, use_multiprocessing=True,
+        history = model.fit(X, y, batch_size=batch_size, use_multiprocessing=True,
                   validation_split=.1, epochs=epochs, shuffle=True, verbose=0,
                   callbacks=[TqdmCallback(verbose=2) ,checkpoint, es])
+
+        Plotter.Plotter.plot_history(history)
 
         model.save(model_fp)
 
@@ -133,11 +134,16 @@ class NNRunner(BaseRunnerImpl):
                 day = FDAY + timedelta(days=tdelta)
                 self.lg.debug("%s, %s" % (tdelta, day))
                 tst = te[(te['date'] >= day - timedelta(days=MAX_LAGS)) & (te['date'] <= day)].copy()
-                Shaper.create_features(self.lg, tst)
+                Shaper.create_features(tst)
                 tst = tst.loc[tst['date'] == day, trainCols]
 
                 k_tst =self._make_keras_input(tst, cat_cols)
                 k_tst = self._make_keras_input(tst, cont_cols, k_tst)
+
+                # for each in k_tst:
+                #     self.lg.debug(k_tst[each])
+                #
+                # exit(0)
 
                 te.loc[te['date'] == day, "sales"] = alpha * model.predict(k_tst)  # magic multiplier by kyakovlev
 
@@ -155,7 +161,7 @@ class NNRunner(BaseRunnerImpl):
             else:
                 sub[cols] += te_sub[cols] * weight
 
-            self.lg.debug("iteration: %d, alpha: %f, weight: %f" %icount, alpha, weight)
+            # self.lg.debug("iteration: %d, alpha: %f, weight: %f" %(icount, alpha, weight))
 
         self.lg.debug("creating csv file submissions")
         sub2 = sub.copy()
@@ -164,14 +170,12 @@ class NNRunner(BaseRunnerImpl):
         sub.to_csv(SUBMISSION_FP, index=False)
 
     def _action_handle(self, actions, cuda):
-
         if "preprocess" in actions:
             self.preprocess()
         if "train" in actions:
             self.train(cuda)
         if "predict" in actions:
             self.predict()
-
 
     def run(self, actions=["train"], cuda=False):
 

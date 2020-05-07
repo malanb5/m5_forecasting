@@ -44,13 +44,15 @@ def create_ds(trLast, maxLags, calendar, prices):
 
     return ds
 
-def create_features(lg, ds):
+def create_features(ds, lg=None):
     dayLags = [7, 28]
     lagSalesCols = [f"lag_{dayLag}" for dayLag in dayLags]
 
     for dayLag, lagSalesCol in tqdm(zip(dayLags, lagSalesCols)):
         ds[lagSalesCol] = ds[["id", "sales"]].groupby("id")["sales"].shift(dayLag)
-    lg.debug(ds)
+
+    if lg is not None:
+        lg.debug(ds)
 
     windows = [7, 28]
     for window in tqdm(windows):
