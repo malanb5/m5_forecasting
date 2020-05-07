@@ -6,3 +6,4 @@ data
 *.log
 *.lgb
 *.hdf5
+*.models
